@@ -1,0 +1,12 @@
+{
+  "customers": {
+    "5421921627": {
+      "phone": "5421921627",
+      "name": "Hasan",
+      "stamps": 0,
+      "totalRewards": 2,
+      "createdAt": "2026-11-20T20:01:57.437Z",
+      "updatedAt": "2026-11-20T20:32:40.578Z"
+    }
+  }
+}

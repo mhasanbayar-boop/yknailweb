@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YK Nail Studio | Yönetim Paneli</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="container wide">
+    <header class="brand">
+      <span class="brand-badge">Yönetim Paneli</span>
+      <h1>YK Nail Studio</h1>
+      <p>3+1 Hediye Tırnak — Damga ve Ödül Yönetimi</p>
+    </header>
+
+    <!-- Giriş Ekranı -->
+    <section id="loginSection" class="card" style="max-width: 420px; margin: 0 auto;">
+      <form id="loginForm" class="input-group">
+        <input type="password" id="adminPass" placeholder="Yönetici Şifresi" required>
+        <button type="submit" class="btn btn-primary">Panele Giriş Yap</button>
+      </form>
+      <div id="loginMsg" class="msg"></div>
+    </section>
+
+    <!-- Ana Panel -->
+    <div id="dashboard" class="hidden">
+      <div class="stats-grid">
+        <div class="stat-box">
+          <div class="num" id="statCustomers">0</div>
+          <div class="label">Kayıtlı Müşteri</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="statStamps">0</div>
+          <div class="label">Aktif Damga</div>
+        </div>
+        <div class="stat-box">
+          <div class="num" id="statReady">0</div>
+          <div class="label">Hediye Kazanan</div>
+        </div>
+      </div>
+
+      <!-- Hızlı Damga Vurma -->
+      <section class="card">
+        <h3 style="margin-bottom: 14px; font-size: 16px;">Hızlı Damga Vur / Müşteri Ekle</h3>
+        <form id="stampForm" class="input-row">
+          <input type="tel" id="newPhone" placeholder="Telefon (05XX...)" required>
+          <input type="text" id="newName" placeholder="Müşteri Adı Soyadı (Opsiyonel)">
+          <button type="submit" class="btn btn-primary">+1 Damga Vur</button>
+        </form>
+        <div id="actionMsg" class="msg"></div>
+      </section>
+
+      <!-- Müşteri Listesi -->
+      <section class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:16px; flex-wrap:wrap;">
+          <h3 style="font-size: 16px;">Müşteriler</h3>
+          <input type="search" id="searchInput" placeholder="İsim veya numara ara..." style="max-width: 280px; padding: 10px 14px;">
+        </div>
+        <div id="customerList"></div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    let adminPassword = sessionStorage.getItem('yk_admin_pass') || '';
+    let allCustomers = [];
+    let maxStamps = 3;
+
+    const loginSection = document.getElementById('loginSection');
+    const dashboard = document.getElementById('dashboard');
+    const loginMsg = document.getElementById('loginMsg');
+    const actionMsg = document.getElementById('actionMsg');
+
+    if (adminPassword) verifyAndLoad();
+
+    document.getElementById('loginForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      adminPassword = document.getElementById('adminPass').value;
+      await verifyAndLoad();
+    });
+
+    async function verifyAndLoad() {
+      const res = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: adminPassword })
+      });
+
+      if (res.ok) {
+        sessionStorage.setItem('yk_admin_pass', adminPassword);
+        loginSection.classList.add('hidden');
+        dashboard.classList.remove('hidden');
+        loadCustomers();
+      } else {
+        sessionStorage.removeItem('yk_admin_pass');
+        loginMsg.textContent = 'Hatalı yönetici şifresi.';
+        loginMsg.className = 'msg error';
+      }
+    }
+
+    async function loadCustomers() {
+      const res = await fetch('/api/admin/customers', {
+        headers: { 'x-admin-password': adminPassword }
+      });
+      const data = await res.json();
+      allCustomers = data.customers || [];
+      maxStamps = data.maxStamps || 3;
+      updateStats();
+      renderList(allCustomers);
+    }
+
+    function updateStats() {
+      document.getElementById('statCustomers').textContent = allCustomers.length;
+      document.getElementById('statStamps').textContent = allCustomers.reduce((s, c) => s + c.stamps, 0);
+      document.getElementById('statReady').textContent = allCustomers.filter(c => c.stamps >= maxStamps).length;
+    }
+
+    function renderList(list) {
+      const container = document.getElementById('customerList');
+      if (!list.length) {
+        container.innerHTML = '<p style="color:var(--muted); text-align:center; padding:20px;">Henüz kayıtlı müşteri yok.</p>';
+        return;
+      }
+
+      container.innerHTML = list.map(c => {
+        const isFull = c.stamps >= maxStamps;
+        return `
+          <div class="customer-item">
+            <div class="cust-info">
+              <h4>${escapeHtml(c.name)}</h4>
+              <p>0${c.phone} • Toplam Hediye: ${c.totalRewards || 0}</p>
+            </div>
+            <div class="cust-actions">
+              <span class="badge-stamps ${isFull ? 'full' : ''}">${c.stamps} / ${maxStamps}</span>
+              ${!isFull
+                ? `<button class="btn btn-primary" style="padding:10px 14px; font-size:13px;" onclick="quickStamp('${c.phone}')">+1 Damga</button>`
+                : `<button class="btn btn-gold" onclick="redeemReward('${c.phone}')">🎁 4. Tırnağı Kullan & Sıfırla</button>`
+              }
+              <button class="btn btn-outline" onclick="removeStamp('${c.phone}')">-1</button>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    document.getElementById('stampForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = document.getElementById('newPhone').value;
+      const name = document.getElementById('newName').value;
+      await sendStamp(phone, name);
+      document.getElementById('newPhone').value = '';
+      document.getElementById('newName').value = '';
+    });
+
+    async function quickStamp(phone) {
+      await sendStamp(phone, '');
+    }
+
+    async function sendStamp(phone, name) {
+      const res = await fetch('/api/admin/stamp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ phone, name })
+      });
+      const data = await res.json();
+      showActionMsg(res.ok ? `✅ 0${data.customer.phone} için damga eklendi (${data.customer.stamps}/${maxStamps})` : data.error, res.ok);
+      if (res.ok) loadCustomers();
+    }
+
+    async function removeStamp(phone) {
+      const res = await fetch('/api/admin/unstamp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ phone })
+      });
+      if (res.ok) {
+        showActionMsg('Damga geri alındı.', true);
+        loadCustomers();
+      }
+    }
+
+    async function redeemReward(phone) {
+      if (!confirm('4. hediye tırnak kullanıldı olarak işaretlenip kart sıfırlansın mı?')) return;
+      const res = await fetch('/api/admin/redeem', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-admin-password': adminPassword
+        },
+        body: JSON.stringify({ phone })
+      });
+      if (res.ok) {
+        showActionMsg('🎁 Hediye kullanıldı, müşteri yeni tura başladı!', true);
+        loadCustomers();
+      }
+    }
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      const q = e.target.value.toLowerCase();
+      const filtered = allCustomers.filter(c =>
+        c.name.toLowerCase().includes(q) || c.phone.includes(q.replace(/\D/g, ''))
+      );
+      renderList(filtered);
+    });
+
+    function showActionMsg(text, isSuccess) {
+      actionMsg.textContent = text;
+      actionMsg.className = `msg ${isSuccess ? 'success' : 'error'}`;
+      setTimeout(() => { actionMsg.className = 'msg'; }, 3500);
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+  </script>
+</body>
+</html>

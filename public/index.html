@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>YK Nail Studio | Sadakat Kartım</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+
+  <!-- Sağ Üst Instagram Linki (kullanıcı adını kendinize göre değiştirin) -->
+  <div class="top-bar">
+    <a href="https://instagram.com/yknaillstudio" target="_blank" rel="noopener noreferrer" class="ig-btn">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+        <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+        <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+      </svg>
+      <span>@yknaillstudio</span>
+    </a>
+  </div>
+
+  <div class="container">
+    <header class="brand">
+      <span class="brand-badge">3 İşleme 4. Tırnak Hediye</span>
+      <h1>YK Nail Studio</h1>
+      <p>Telefon numaranızı girerek damgalarınızı anında görüntüleyin</p>
+    </header>
+
+    <section class="card">
+      <form id="lookupForm" class="input-group">
+        <input
+          type="tel"
+          id="phoneInput"
+          placeholder="05XX XXX XX XX"
+          autocomplete="tel"
+          required
+        >
+        <button type="submit" class="btn btn-primary">Kartımı Görüntüle</button>
+      </form>
+      <div id="statusMsg" class="msg"></div>
+    </section>
+
+    <section id="cardContainer" class="hidden" style="margin-bottom: 20px;"></section>
+
+    <!-- Sayfayı Dolduran Kampanya Adımları -->
+    <section class="info-steps">
+      <div class="step-box">
+        <div class="step-icon">💅</div>
+        <div>
+          <h4>1. İşlemini Yaptır</h4>
+          <p>Her randevunda dijital kartına damganı al.</p>
+        </div>
+      </div>
+      <div class="step-box">
+        <div class="step-icon">✦</div>
+        <div>
+          <h4>2. 3 Damga Biriktir</h4>
+          <p>Numaranla dilediğin zaman durumunu takip et.</p>
+        </div>
+      </div>
+      <div class="step-box">
+        <div class="step-icon">🎁</div>
+        <div>
+          <h4>3. 4. Tırnak Hediye</h4>
+          <p>3 damga dolduğunda hediye işlemini kullan!</p>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const form = document.getElementById('lookupForm');
+    const phoneInput = document.getElementById('phoneInput');
+    const statusMsg = document.getElementById('statusMsg');
+    const cardContainer = document.getElementById('cardContainer');
+
+    const savedPhone = localStorage.getItem('yk_customer_phone');
+    if (savedPhone) {
+      phoneInput.value = savedPhone;
+      fetchCard(savedPhone);
+    }
+
+    form.addEventListener('submit', (e) => {
+      e.preventDefault();
+      fetchCard(phoneInput.value);
+    });
+
+    async function fetchCard(phone) {
+      statusMsg.className = 'msg';
+      statusMsg.textContent = '';
+
+      try {
+        const res = await fetch(`/api/customer/${encodeURIComponent(phone)}`);
+        const data = await res.json();
+
+        if (!res.ok) {
+          cardContainer.classList.add('hidden');
+          statusMsg.textContent = data.error || 'Kart bulunamadı.';
+          statusMsg.classList.add('error');
+          return;
+        }
+
+        localStorage.setItem('yk_customer_phone', phone);
+        renderCard(data);
+      } catch (err) {
+        statusMsg.textContent = 'Bağlantı hatası oluştu. Lütfen tekrar deneyin.';
+        statusMsg.classList.add('error');
+      }
+    }
+
+    function renderCard(customer) {
+      const max = customer.maxStamps || 3;
+      const stamps = customer.stamps || 0;
+      const percent = Math.min(100, Math.round((stamps / max) * 100));
+      const remaining = Math.max(0, max - stamps);
+      const isRewardReady = stamps >= max;
+
+      let slotsHtml = '';
+      for (let i = 1; i <= max; i++) {
+        const isFilled = i <= stamps;
+        const delay = isFilled ? `style="animation-delay: ${i * 0.08}s"` : '';
+        slotsHtml += `
+          <div class="stamp-slot ${isFilled ? 'filled' : ''}" ${delay}>
+            ${isFilled ? '✦' : i}
+          </div>
+        `;
+      }
+
+      slotsHtml += `
+        <div class="stamp-slot reward-slot ${isRewardReady ? 'filled' : ''}" style="animation-delay: 0.3s">
+          🎁
+        </div>
+      `;
+
+      const rewardBanner = isRewardReady
+        ? `<div class="reward-banner">🎉 Tebrikler! 3 işleminizi tamamladınız, 4. tırnak hediyeniz hazır!</div>`
+        : '';
+
+      const lastVisit = new Date(customer.updatedAt).toLocaleDateString('tr-TR', {
+        day: 'numeric', month: 'long', year: 'numeric'
+      });
+
+      cardContainer.innerHTML = `
+        <div class="loyalty-card">
+          <div class="lc-header">
+            <div>
+              <div class="lc-title">YK Nail Studio</div>
+              <div class="lc-name">${escapeHtml(customer.name)}</div>
+            </div>
+            <div class="lc-counter">${stamps} / ${max} İşlem</div>
+          </div>
+
+          <div class="stamps-grid">${slotsHtml}</div>
+
+          <div class="progress-bar">
+            <div class="progress-fill" style="width: ${percent}%"></div>
+          </div>
+
+          <div class="lc-footer">
+            <span>${remaining > 0 ? `4. hediye tırnağa ${remaining} işlem kaldı` : '4. Tırnak Hediyeniz Hazır!'}</span>
+            <span>Son işlem: ${lastVisit}</span>
+          </div>
+
+          ${rewardBanner}
+        </div>
+      `;
+
+      cardContainer.classList.remove('hidden');
+    }
+
+    function escapeHtml(str) {
+      return String(str).replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+      }[m]));
+    }
+  </script>
+</body>
+</html>
